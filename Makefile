@@ -9,7 +9,7 @@ simple_analysis: betree.h analysis.cpp
 	g++ -g -std=c++11 betree.h analysis.cpp -o analysis.o 
 
 analysis: betree.h analysis.cpp
-	g++ -g -std=c++11 betree.h analysis.cpp -o analysis.o -DTIMER 
+	g++ -g -std=c++11 betree.h analysis.cpp -o analysis.o -DTIMER
 
 clean: 
 	$(RM) *.o

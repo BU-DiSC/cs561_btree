@@ -59,7 +59,8 @@ public:
 
     // size of Buffer in Bytes
     static const int BUFFER_SIZE = DATA_SIZE - PIVOT_SIZE;
-    static const int NUM_UPSERTS = (BUFFER_SIZE - sizeof(int)) / (2 * sizeof(std::pair<_Key, _Value>));
+    // static const int NUM_UPSERTS = (BUFFER_SIZE - sizeof(int)) / (2 * sizeof(std::pair<_Key, _Value>));
+    static const int NUM_UPSERTS = (BUFFER_SIZE - sizeof(int)) / (sizeof(_Key *) + sizeof(_Value *));
 #endif
 
     // number of pivots for every node in the tree
@@ -305,7 +306,7 @@ public:
 
 #ifdef PROFILE
         auto stop = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
         open_time += duration.count();
 #endif
     }
@@ -440,6 +441,25 @@ public:
         uint pos;
         bool flag = false;
 
+        // for (int i = 0; i < getPivotsCtr() - 1; i++)
+        // {
+        //     if (key <= child_key_values[i])
+        //     {
+        //         // return i;
+        //         pos = i;
+        //         flag = true;
+        //         break;
+        //     }
+        // }
+        // if (!flag)
+        //     pos = getPivotsCtr() - 1;
+
+        // int i = 0;
+        // while(i < getPivotsCtr()-1 && child_key_values[i]<key){
+        //     ++i;
+        // }
+
+        // assert(pos==i);
 
         // if (getPivotsCtr() < 4)
         // {
@@ -599,6 +619,10 @@ public:
 
         manager->addDirtyNode(new_id);
 
+        // sort the data in the current node
+        // std::sort(std::begin(data->data), std::end(data->data), compare_pair);
+        // std::sort(data->data, data->data + (sizeof(data->data) * data->size));
+
         traits.num_blocks++;
 
         // start moving data pairs
@@ -631,6 +655,7 @@ public:
         new_sibling.setParent(*parent);
 
         // split_key becomes lower bound of newly added sibling's keys
+        // split_key = new_sibling->data->data[0].first;
         split_key = data->data[data->size - 1].first;
 #ifdef PROFILE
         auto stop = std::chrono::high_resolution_clock::now();
@@ -652,6 +677,7 @@ public:
 #endif
         open();
         // make sure that caller is not a leaf node
+        // assert(!isLeaf());
         assert(!*is_leaf);
 
         manager->addDirtyNode(id);
@@ -690,15 +716,18 @@ public:
             }
             // move all pointers
             new_node.pivot_pointers[i - start_index] = pivot_pointers[i];
+            // new_node.pivots_ctr++;
             new_node.setPivotCounter(new_node.getPivotsCtr() + 1);
 
             // change the parent node for the pivots
+            //new_node->pivot_pointers[i - start_index]->parent = new_node;
             temp_mover.setToId(pivot_pointers[i]);
             *temp_mover.parent = new_node.getId();
             manager->addDirtyNode(temp_mover.getId());
         }
 
         // reset pivots counter for old node
+        // *pivots_ctr -= new_node.getPivotsCtr();
         setPivotCounter(getPivotsCtr() - new_node.getPivotsCtr());
 
         // split key is the first pointer of new node's children
@@ -739,9 +768,16 @@ public:
         }
 
         buffer->size = temp->size;
+        // delete[] temp->buffer;
         delete temp;
 
         manager->addDirtyNode(id);
+
+        // delete[] buffer;
+        // // at this point, all elements have been distributed between the new node and the temp buffer
+        // // temp buffer will contain elements that should be retained by the old node
+        // // so replace the old node's buffer with temp
+        // buffer = temp;
 
         *next_node = new_id;
 
@@ -762,6 +798,7 @@ public:
         auto start = std::chrono::high_resolution_clock::now();
 #endif
         open();
+        // assert(!isLeaf());
         assert(!*is_leaf);
 
         if (isRoot())
@@ -793,6 +830,13 @@ public:
             }
         }
 
+        // find child that can accept maximum messages
+        // for (int i = 0; i < getPivotsCtr(); i++)
+        // {
+        //     if (num_elements[i] > num_elements[chosen_child])
+        //         chosen_child = i;
+        // }
+
         chosen_child = max_slot;
 #ifdef PROFILE
         auto stop_find = std::chrono::high_resolution_clock::now();
@@ -803,6 +847,7 @@ public:
 #ifdef PROFILE
         auto start_extract = std::chrono::high_resolution_clock::now();
 #endif
+        // BeNode<key_type, value_type, knobs, compare> *child = pivot_pointers[chosen_child];
         BeNode<key_type, value_type, knobs, compare> child(manager, pivot_pointers[chosen_child]);
 
         int available_spots = knobs::NUM_UPSERTS - child.getBufferSize();
@@ -858,13 +903,25 @@ public:
 #ifdef PROFILE
         auto start_replace = std::chrono::high_resolution_clock::now();
 #endif
-    
+        // copy temp to buffer
+        // for (int i = 0; i < buffer->size; i++)
+        // {
+        //     if (i < temp->size)
+        //     {
+        //         buffer->buffer[i] = temp->buffer[i];
+        //     }
+        //     else
+        //     {
+        //         buffer->buffer[i] = empty_pair;
+        //     }
+        // }
         memcpy(buffer->buffer, temp->buffer, temp->size * sizeof(buffer->buffer[0]));
 
         buffer->size = temp->size;
 
         manager->addDirtyNode(id);
 
+        // delete[] temp->buffer;
         delete temp;
 #ifdef PROFILE
         auto stop_replace = std::chrono::high_resolution_clock::now();
@@ -890,6 +947,7 @@ public:
 #endif
         // make sure caller is not a leaf node
         open();
+        // assert(!isLeaf());
         assert(!*is_leaf);
 
         // set node as dirty
@@ -910,11 +968,13 @@ public:
 
             assert(data->size <= knobs::NUM_DATA_PAIRS);
 
+            // delete[] elements_to_flush;
             return true;
         }
 
         assert(child.getDataSize() == init_data_size + num_to_flush);
-        
+        // update trait characteristic
+        // traits::leaf_flushes++;
 #ifdef PROFILE
         auto stop = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
@@ -982,6 +1042,7 @@ public:
         flushinternal_time += duration.count();
 #endif
 
+        // delete[] elements_to_flush;
         // return true or false based on whether we exceeded capacity
         // if returning true, the caller for this function will have to
         // perform a subsequent flush operation at least for one more level
@@ -995,7 +1056,9 @@ public:
          */
     Result flushLevel(key_type &split_key, uint &new_node_id, BeTraits &traits)
     {
-
+        // #ifdef PROFILE
+        //         auto start = std::chrono::high_resolution_clock::now();
+        // #endif
         open();
 
         int num_to_flush = 0;
@@ -1052,7 +1115,13 @@ public:
             traits.io_insert++;
 #endif
         }
-        
+
+        // if flushInternal was a success and buffer didn't exceed capacity
+        // #ifdef PROFILE
+        //         auto stop = std::chrono::high_resolution_clock::now();
+        //         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+        //         flushlevel_time += duration.count();
+        // #endif
         delete[] elements_to_flush;
         return res;
     }
@@ -1621,7 +1690,7 @@ public:
         pivot_pointers = (uint *)(disk_store.block_buf + sizeof(parent) + sizeof(is_leaf) + sizeof(is_root) + sizeof(next_node) + sizeof(pivots_ctr) + sizeof(struct Buffer<key_type, value_type, knobs, compare>) + (num * sizeof(key_type *)));
 #ifdef PROFILE
         auto stop = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
         deserialize_time += duration.count();
 #endif
     }
@@ -1659,17 +1728,14 @@ public:
     uint head_leaf_id;
     uint tail_leaf_id;
 
+    _Key min_key;
+    _Key max_key;
+
 public:
     BeTree(std::string _name, std::string _rootDir, int _size_of_each_block, uint _blocks_in_memory) : tail_leaf(nullptr), head_leaf(nullptr)
     {
         manager = new BlockManager(_name, _rootDir, _size_of_each_block, _blocks_in_memory);
-#ifdef PROFLE
-        open_time = 0;
-        flushlevel_time = 0;
-        flushleaf_time = 0;
-        flushinternal_time = 0;
-        prepareflush_time = 0;
-#endif
+
         uint root_id = manager->allocate();
         root = new BeNode<key_type, value_type, knobs, compare>(manager, root_id);
         root->setRoot(true);
@@ -1714,6 +1780,16 @@ public:
 #ifdef TIMER
     BeTimer timer;
 #endif
+public:
+    key_type getMinimumKey()
+    {
+        return min_key;
+    }
+
+    key_type getMaximumKey()
+    {
+        return max_key; 
+    }
 
 public:
     bool insert(key_type key, value_type value)
@@ -1740,6 +1816,12 @@ public:
             {
                 tail_leaf = root;
                 head_leaf = root;
+            }
+
+            if(root->getDataSize()==1)
+            {
+                min_key = key;
+                max_key = key;
             }
 
             // if flag returns true, it means we need to split the current leaf (actually the root)
@@ -1924,6 +2006,11 @@ public:
                 }
             }
         }
+
+        if (key < min_key)
+            min_key = key;
+        else if (key > max_key)
+            max_key = key;
 
 // all inserts start from root and we have already accounted one I/O for reading from disk
 // we now need to write the root back to disk which takes one I/O
@@ -2192,7 +2279,7 @@ public:
         Iterator it = ibegin;
         for (size_t s = 0; s < num_items + 1; ++s, ++it)
         {
-            leaf->insertInLeaf(*it);
+            leaf->insertInLeaf(*it);    
         }
 
         // now add to tree
@@ -2207,10 +2294,17 @@ public:
             // newly added leaf is always tail
             tail_leaf = leaf;
             tail_leaf_id = leaf->getId();
+
+            min_key = ibegin->first; 
+            max_key = iend->first; 
         }
 
         else
         {
+            // if tree is not empty, we are only going to add rightwards 
+            // so we only need to update max key
+            max_key = iend->first; 
+            
             // case 2: tail leaf is not null, but root and tail leaf are the same, i.e. root is a leaf
             // this means that there is only one node in tree
             if (root->isLeaf())
@@ -2320,6 +2414,12 @@ public:
                 }
             }
         }
+
+        // #ifdef TIMER
+        //         auto stop = std::chrono::high_resolution_clock::now();
+        //         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+        //         timer.bulk_load_time += duration.count();
+        // #endif
 
         return true;
     }
@@ -2431,6 +2531,13 @@ public:
     uint getNumBlocks() { return manager->current_blocks; }
 
     uint getBlocksInMemoryCap() { return manager->blocks_in_memory_cap; }
+
+#ifdef PROFILE
+    void getTimers(unsigned long &openb, unsigned long &readb, unsigned long &writeb)
+    {
+        return manager->getTimers(openb, readb, writeb);
+    }
+#endif
 };
 
 #endif

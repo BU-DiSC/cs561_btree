@@ -48,7 +48,8 @@ public:
 #ifdef BPLUS
     static const int NUM_UPSERTS = 1;
     // Buffer size  = sizeof(pair) + sizeof(int metadata)
-    static const int BUFFER_SIZE = (2 * sizeof(std::pair<_Key, _Value>)) + sizeof(int);
+    // static const int BUFFER_SIZE = (2 * sizeof(std::pair<_Key, _Value>)) + sizeof(int);
+    static const int BUFFER_SIZE = (sizeof(std::pair<_Key, _Value>)) + sizeof(int);
     static const int PIVOT_SIZE = DATA_SIZE - BUFFER_SIZE;
 #else
     // size of pivots in Bytes
@@ -60,11 +61,15 @@ public:
     // size of Buffer in Bytes
     static const int BUFFER_SIZE = DATA_SIZE - PIVOT_SIZE;
     // static const int NUM_UPSERTS = (BUFFER_SIZE - sizeof(int)) / (2 * sizeof(std::pair<_Key, _Value>));
-    static const int NUM_UPSERTS = (BUFFER_SIZE - sizeof(int)) / (sizeof(_Key *) + sizeof(_Value *));
+    static const int NUM_UPSERTS = (BUFFER_SIZE - sizeof(int)) / sizeof(std::pair<_Key, _Value>);
+    // static const int NUM_UPSERTS = (BUFFER_SIZE - sizeof(int)) / (sizeof(_Key *) + sizeof(_Value *));
 #endif
 
+    // static const int S = (PIVOT_SIZE - sizeof(_Key *)) / (sizeof(uint *) + sizeof(_Key *));
+    static const int S = (PIVOT_SIZE - sizeof(_Key)) / (sizeof(uint) + sizeof(_Key));
     // number of pivots for every node in the tree
-    static const int NUM_PIVOTS = (PIVOT_SIZE / (sizeof(_Key *) + sizeof(_Value *))) - 1;
+    // static const int NUM_PIVOTS = (PIVOT_SIZE / (sizeof(_Key *) + sizeof(_Key *))) - 1;
+    static const int NUM_PIVOTS = S;
 
     // number of children for every node
     static const int NUM_CHILDREN = NUM_PIVOTS + 1;
@@ -111,6 +116,15 @@ struct BeTraits
 
     int median_fanout = 0;
     int median_buffer_occupancy = 0;
+
+    int min_leaf_occupancy = 0;
+    int max_leaf_occupancy = 0; 
+    int avg_leaf_occupancy = 0;
+
+    int num_gr_80 = 0;
+    int num_50_80 = 0;
+    int num_20_50 = 0;
+    int num_le_20 = 0;
 
 #ifdef IO
     unsigned long io_pointquery = 0;
@@ -319,10 +333,10 @@ public:
 
     // Parameterized constructor
     /**
-         *  returns: N/A
-         *  Function: creates a new node set to the given id 
-         *              and parent as set.  
-        */
+     *  returns: N/A
+     *  Function: creates a new node set to the given id
+     *              and parent as set.
+     */
     BeNode(BlockManager *_manager, uint _id, uint _parent, bool _is_leaf, bool _is_root, uint _next_node) : manager(_manager), id(_id)
     {
 
@@ -348,9 +362,9 @@ public:
 
     // constructor used when we know that the node exists in disk
     /**
-         *  returns: N/A
-         *  Function: initializes a node to the given id and retrieves from disk.  
-        */
+     *  returns: N/A
+     *  Function: initializes a node to the given id and retrieves from disk.
+     */
 
     BeNode(BlockManager *_manager, uint _id)
     {
@@ -422,10 +436,10 @@ public:
 
 public:
     /**
-         *  returns: index of child slot
-         *  Function finds suitable index where key can be placed 
-         *  in the current node (identifies the child)
-        */
+     *  returns: index of child slot
+     *  Function finds suitable index where key can be placed
+     *  in the current node (identifies the child)
+     */
     uint slotOfKey(key_type key)
     {
         // make sure that the caller is an internal node
@@ -520,11 +534,11 @@ public:
     }
 
     /**
-         *  returns: true or false indicating a split
-         *  Function: inserts [num] data pairs in leaf. If leaf 
-         *  becomes full, returns true - indicating a split. Else 
-         *  returns false. 
-         */
+     *  returns: true or false indicating a split
+     *  Function: inserts [num] data pairs in leaf. If leaf
+     *  becomes full, returns true - indicating a split. Else
+     *  returns false.
+     */
     bool insertInLeaf(std::pair<key_type, value_type> buffer_elements[], int &num)
     {
         // make sure that caller node is a leaf
@@ -593,9 +607,9 @@ public:
     }
 
     /**
-         *  returns: new node id
-         *  Function: splits leaf into two
-         */
+     *  returns: new node id
+     *  Function: splits leaf into two
+     */
     int splitLeaf(key_type &split_key, BeTraits &traits, uint &new_id)
     {
 #ifdef PROFILE
@@ -615,7 +629,7 @@ public:
         new_sibling.setParent(*parent);
         new_sibling.setLeaf(true);
         new_sibling.setRoot(false);
-        new_sibling.setNextNode(next_node);
+        new_sibling.setNextNode(*next_node);
 
         manager->addDirtyNode(new_id);
 
@@ -650,6 +664,7 @@ public:
 #endif
 
         // change current node's next node to new_node
+        assert(new_sibling.getId() != 0);
         *next_node = new_sibling.getId();
 
         new_sibling.setParent(*parent);
@@ -666,10 +681,10 @@ public:
     }
 
     /**
-         *  returns: node whose b
-         *  Function: splits internal node into two. Distributes 
-         *              buffer and pivots as required
-         */
+     *  returns: node whose b
+     *  Function: splits internal node into two. Distributes
+     *              buffer and pivots as required
+     */
     int splitInternal(key_type &split_key, BeTraits &traits, uint &new_id)
     {
 #ifdef PROFILE
@@ -703,7 +718,7 @@ public:
 #elif SPLIT80
         start_index = 0.8 * (getPivotsCtr());
 #elif BULKLOAD
-        start_index = 0.9 * (getPivotsCtr());
+        start_index = 0.95 * (getPivotsCtr());
 #endif
         for (int i = start_index; i < getPivotsCtr(); i++)
         {
@@ -720,7 +735,7 @@ public:
             new_node.setPivotCounter(new_node.getPivotsCtr() + 1);
 
             // change the parent node for the pivots
-            //new_node->pivot_pointers[i - start_index]->parent = new_node;
+            // new_node->pivot_pointers[i - start_index]->parent = new_node;
             temp_mover.setToId(pivot_pointers[i]);
             *temp_mover.parent = new_node.getId();
             manager->addDirtyNode(temp_mover.getId());
@@ -768,6 +783,10 @@ public:
         }
 
         buffer->size = temp->size;
+
+#ifdef BPLUS
+        assert(buffer->size == 0);
+#endif
         // delete[] temp->buffer;
         delete temp;
 
@@ -854,6 +873,20 @@ public:
 
         int flush_limit = knobs::FLUSH_LIMIT;
 
+#ifdef BPLUS
+        if (!child.isLeaf())
+        {
+            if (child.getBufferSize() != 0)
+            {
+                int ix = 1;
+                // get child's child and see if this error persists for lower level
+                BeNode<key_type, value_type, knobs, compare> childchild(manager, child.getPivot(ix));
+                std::cout << childchild.getPivotsCtr() << std::endl;
+            }
+            assert(child.getBufferSize() == 0);
+        }
+#endif
+
         if (child.isLeaf())
         {
             flush_limit = knobs::LEAF_FLUSH_LIMIT;
@@ -918,6 +951,9 @@ public:
         memcpy(buffer->buffer, temp->buffer, temp->size * sizeof(buffer->buffer[0]));
 
         buffer->size = temp->size;
+#ifdef BPLUS
+        assert(buffer->size == 0);
+#endif
 
         manager->addDirtyNode(id);
 
@@ -936,10 +972,10 @@ public:
     }
 
     /**
-         *  returns: true or false based on split or no split
-         *  Function: flushes element of internal node buffer to its child leaf. 
-         *              If exceeding capacity of leaf, it splits
-         */
+     *  returns: true or false based on split or no split
+     *  Function: flushes element of internal node buffer to its child leaf.
+     *              If exceeding capacity of leaf, it splits
+     */
     bool flushLeaf(BeNode<key_type, value_type, knobs, compare> &child, std::pair<key_type, value_type> *elements_to_flush, int &num_to_flush, key_type &split_key, uint &new_node_id, BeTraits &traits)
     {
 #ifdef PROFILE
@@ -985,10 +1021,10 @@ public:
     }
 
     /**
-         *  returns: true or false indicating buffer exceeding capacity or not
-         *  Function: flushes elements of buffer from internal node to its 
-         *              child internal node.
-         */
+     *  returns: true or false indicating buffer exceeding capacity or not
+     *  Function: flushes elements of buffer from internal node to its
+     *              child internal node.
+     */
     bool flushInternal(BeNode<key_type, value_type, knobs, compare> &child, std::pair<key_type, value_type> *elements_to_flush, int &num_to_flush)
     {
 #ifdef PROFILE
@@ -1033,6 +1069,9 @@ public:
             last_index--;
         }
 
+#ifdef BPLUS
+        assert(num_to_flush == 1);
+#endif
         // memcpy(child.buffer->buffer + child.buffer->size, elements_to_flush, num_to_flush * sizeof(std::pair<key_type, value_type>));
         child.buffer->size += num_to_flush;
 
@@ -1050,10 +1089,10 @@ public:
     }
 
     /**
-         *  returns: SPLIT or NOSPLIT
-         *  Function: flushes a level of a tree from a node. If the internal node flush 
-         *  resulted in exceeding capacity, flushes a level again from that internal node 
-         */
+     *  returns: SPLIT or NOSPLIT
+     *  Function: flushes a level of a tree from a node. If the internal node flush
+     *  resulted in exceeding capacity, flushes a level again from that internal node
+     */
     Result flushLevel(key_type &split_key, uint &new_node_id, BeTraits &traits)
     {
         // #ifdef PROFILE
@@ -1089,6 +1128,10 @@ public:
 
             Result flag = flushLeaf(child, elements_to_flush, num_to_flush, split_key, new_node_id, traits) ? SPLIT : NOSPLIT;
 
+#ifdef BPLUS
+            // since we have flushed, let's confirm if that flush worked correctly
+            assert(buffer->size == 0);
+#endif
             if (flag == SPLIT)
             {
                 traits.leaf_splits++;
@@ -1108,8 +1151,17 @@ public:
         traits.internal_flushes++;
         if (flushInternal(child, elements_to_flush, num_to_flush))
         {
+
+#ifdef BPLUS
+            // since we have flushed from this node, let's confirm if that flush worked correctly
+            assert(buffer->size == 0);
+#endif
             res = child.flushLevel(split_key, new_node_id, traits);
 
+#ifdef BPLUS
+            // we initiated a flushLevel for the child. When this returns, child's buffer should be empty
+            assert(child.getBufferSize() == 0);
+#endif
 // we are done with the child here so need to write back to disk, account one i/o
 #ifdef IO
             traits.io_insert++;
@@ -1127,10 +1179,10 @@ public:
     }
 
     /**
-         *  returns: true or false 
-         *  Function: adds a pivot to a node. Returns true if after adding the pivot, 
-         *          exceeds capacity for the node
-         */
+     *  returns: true or false
+     *  Function: adds a pivot to a node. Returns true if after adding the pivot,
+     *          exceeds capacity for the node
+     */
     bool addPivot(key_type &split_key, uint &new_node_id)
     {
 
@@ -1360,11 +1412,12 @@ public:
                     current_node.open();
                     // insert elements at end of row by fetching elements. flag will determine if we are
                     // reaching the upper limit
-                    //row.insert(row.end(), current_node->getElementsInRangeInLeaf(low, high, flag));
+                    // row.insert(row.end(), current_node->getElementsInRangeInLeaf(low, high, flag));
 
                     if (current_node.getDataSize() > 0)
                     {
                         std::vector<std::pair<key_type, value_type>> fetched = current_node.getElementsInRangeInLeaf(low, high, flag);
+                        // std::cout<<"Fetched Size = "<<fetched.size()<<std::endl;
                         for (int i = 0; i < fetched.size(); i++)
                         {
                             row.push_back(fetched[i]);
@@ -1403,16 +1456,18 @@ public:
                     current_node.open();
                     // insert elements at end of row by fetching elements. flag will determine if we are
                     // reaching the upper limit
-                    //row.insert(row.end(), current_node->getElementsInRangeInBuffer(low, high, flag));
+                    // row.insert(row.end(), current_node->getElementsInRangeInBuffer(low, high, flag));
 
                     if (current_node.getBufferSize() > 0)
                     {
                         std::vector<std::pair<key_type, value_type>> fetched = current_node.getElementsInRangeInBuffer(low, high, flag);
+                        // std::cout << "Fetched Size = " << fetched.size() << std::endl;
                         for (int i = 0; i < fetched.size(); i++)
                         {
                             row.push_back(fetched[i]);
                         }
                     }
+                    // std::cout<<"Goint to next node = "<<current_node.getNextNode().getId()<<std::endl;
                     current_node.setToId(*current_node.getNextNode());
 
                     if (current_node.getId() == 0)
@@ -1448,6 +1503,10 @@ public:
 
         std::vector<std::pair<key_type, value_type>> output;
 
+        if (elements.size() == 1)
+        {
+            return elements[0];
+        }
         for (int i = 0; i < elements.size(); i++)
         {
             // std::vector<std::pair<key_type, value_type> > row = elements[i];
@@ -1547,7 +1606,7 @@ public:
         manager->addDirtyNode(id);
     }
 
-    int *getPivot(int slot)
+    uint &getPivot(uint slot)
     {
         open();
         assert(slot >= 0);
@@ -1644,6 +1703,8 @@ public:
             }
             setToId(orig_id);
         }
+
+        return total / (double)(num);
     }
 
     int depth()
@@ -1663,31 +1724,124 @@ public:
         return d + 1;
     }
 
+    int get_leaf_occupancy()
+    {
+        open();
+        assert(*is_leaf);
+
+        return data->size;
+    }
+
 public:
     int Serialize(Block *disk_store, int pos)
     {
+        return 0;
     }
 
+    //     void Deserialize(const Block &disk_store)
+    //     {
+    // #ifdef PROFILE
+    //         auto start = std::chrono::high_resolution_clock::now();
+    // #endif
+    //         is_leaf = (bool *)(disk_store.block_buf);
+    //         is_root = (bool *)(disk_store.block_buf + sizeof(is_leaf));
+    //         parent = (uint *)(disk_store.block_buf + sizeof(is_leaf) + sizeof(is_root));
+    //         next_node = (uint *)(disk_store.block_buf + sizeof(is_leaf) + sizeof(is_root) + sizeof(parent));
+    //         pivots_ctr = (int *)(disk_store.block_buf + sizeof(is_leaf) + sizeof(is_root) + sizeof(parent) + sizeof(next_node));
+
+    //         // every node has either a buffer or data. So essentially, both are in the same place
+    //         data = (struct Data<key_type, value_type, knobs, compare> *)(disk_store.block_buf + sizeof(is_leaf) + sizeof(is_root) + sizeof(parent) + sizeof(next_node) + sizeof(pivots_ctr));
+    //         buffer = (struct Buffer<key_type, value_type, knobs, compare> *)(disk_store.block_buf + sizeof(is_leaf) + sizeof(is_root) + sizeof(parent) + sizeof(next_node) + sizeof(pivots_ctr));
+
+    //         // child_key_values = (key_type *)(disk_store.block_buf + sizeof(parent) + sizeof(is_leaf) + sizeof(is_root) + sizeof(next_node) + sizeof(pivots_ctr) + sizeof(struct Buffer<key_type, value_type, knobs, compare>*));
+    //         child_key_values = (key_type *)(disk_store.block_buf + sizeof(parent) + sizeof(is_leaf) + sizeof(is_root) + sizeof(next_node) + sizeof(pivots_ctr) + sizeof(struct Buffer<key_type, value_type, knobs, compare>));
+
+    //         int num = knobs::NUM_CHILDREN - 1;
+
+    //         pivot_pointers = (uint *)(disk_store.block_buf + sizeof(parent) + sizeof(is_leaf) + sizeof(is_root) + sizeof(next_node) + sizeof(pivots_ctr) + sizeof(struct Buffer<key_type, value_type, knobs, compare>) + (num * sizeof(child_key_values)));
+
+    //         assert(*is_leaf == true || *is_leaf == false);
+    //         assert(*is_root == true || *is_root == false);
+    //         assert(pivots_ctr >= 0);
+    //         assert(*parent >= 0);
+    //         assert(*next_node >=0);
+
+    //         // std::cout<<sizeof(buffer)<<std::endl;
+    //         // // std::cout<<sizeof(struct Buffer<key_type, value_type, knobs, compare>)<<std::endl;
+    //         // // std::cout<<sizeof(struct Buffer<key_type, value_type, knobs, compare>*)<<std::endl;
+    //         // std::cout<<"child "<<sizeof(child_key_values)<<std::endl;
+    //         // std::cout<<sizeof(pivot_pointers)<<std::endl;
+    //         // // std::cout<<sizeof(key_type)<<std::endl;
+    //         // // std::cout<<sizeof(key_type*)<<std::endl;
+    //         // std::cout<<knobs::S<<std::endl;
+    //         // int num_pivs = knobs::NUM_PIVOTS;
+    //         // int size1 = sizeof(parent) + sizeof(is_leaf) + sizeof(is_root) + sizeof(next_node) + sizeof(pivots_ctr) + sizeof(struct Buffer<key_type, value_type, knobs, compare>) + (num * sizeof(child_key_values)) + (num_pivs*sizeof(pivot_pointers));
+    //         // int size2 = sizeof(is_leaf) + sizeof(is_root) + sizeof(parent) + sizeof(next_node) + sizeof(pivots_ctr) + sizeof(struct Data<key_type, value_type, knobs, compare>);
+    //         // int size_buffer = sizeof(struct Buffer<key_type, value_type, knobs, compare>);
+    //         // std::cout<<sizeof(buffer->size)<<std::endl;
+    //         // std::cout<<sizeof(buffer->buffer)<<std::endl;
+    //         // std::cout<<knobs::NUM_UPSERTS<<std::endl;
+    //         // std::cout<<size1<<std::endl;
+    //         // std::cout<<size2<<std::endl;
+    // #ifdef PROFILE
+    //         auto stop = std::chrono::high_resolution_clock::now();
+    //         auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+    //         deserialize_time += duration.count();
+    // #endif
+    //     }
     void Deserialize(const Block &disk_store)
     {
 #ifdef PROFILE
         auto start = std::chrono::high_resolution_clock::now();
 #endif
         is_leaf = (bool *)(disk_store.block_buf);
-        is_root = (bool *)(disk_store.block_buf + sizeof(is_leaf));
-        parent = (uint *)(disk_store.block_buf + sizeof(is_leaf) + sizeof(is_root));
-        next_node = (uint *)(disk_store.block_buf + sizeof(is_leaf) + sizeof(is_root) + sizeof(parent));
-        pivots_ctr = (int *)(disk_store.block_buf + sizeof(is_leaf) + sizeof(is_root) + sizeof(parent) + sizeof(next_node));
+        is_root = (bool *)(disk_store.block_buf + sizeof(bool));
+        parent = (uint *)(disk_store.block_buf + sizeof(bool) + sizeof(bool));
+        next_node = (uint *)(disk_store.block_buf + sizeof(bool) + sizeof(bool) + sizeof(uint));
+        pivots_ctr = (int *)(disk_store.block_buf + sizeof(bool) + sizeof(bool) + sizeof(uint) + sizeof(uint));
 
         // every node has either a buffer or data. So essentially, both are in the same place
-        data = (struct Data<key_type, value_type, knobs, compare> *)(disk_store.block_buf + sizeof(is_leaf) + sizeof(is_root) + sizeof(parent) + sizeof(next_node) + sizeof(pivots_ctr));
-        buffer = (struct Buffer<key_type, value_type, knobs, compare> *)(disk_store.block_buf + sizeof(is_leaf) + sizeof(is_root) + sizeof(parent) + sizeof(next_node) + sizeof(pivots_ctr));
+        data = (struct Data<key_type, value_type, knobs, compare> *)(disk_store.block_buf + sizeof(bool) + sizeof(bool) + sizeof(uint) + sizeof(uint) + sizeof(int));
+        buffer = (struct Buffer<key_type, value_type, knobs, compare> *)(disk_store.block_buf + sizeof(bool) + sizeof(bool) + sizeof(uint) + sizeof(uint) + sizeof(int));
 
-        child_key_values = (key_type *)(disk_store.block_buf + sizeof(parent) + sizeof(is_leaf) + sizeof(is_root) + sizeof(next_node) + sizeof(pivots_ctr) + sizeof(struct Buffer<key_type, value_type, knobs, compare>));
+        // child_key_values = (key_type *)(disk_store.block_buf + sizeof(parent) + sizeof(is_leaf) + sizeof(is_root) + sizeof(next_node) + sizeof(pivots_ctr) + sizeof(struct Buffer<key_type, value_type, knobs, compare>*));
+        child_key_values = (key_type *)(disk_store.block_buf + sizeof(uint) + sizeof(bool) + sizeof(bool) + sizeof(uint) + sizeof(int) + sizeof(struct Buffer<key_type, value_type, knobs, compare>));
 
-        int num = knobs::NUM_PIVOTS - 1;
+        int num = knobs::NUM_CHILDREN;
 
-        pivot_pointers = (uint *)(disk_store.block_buf + sizeof(parent) + sizeof(is_leaf) + sizeof(is_root) + sizeof(next_node) + sizeof(pivots_ctr) + sizeof(struct Buffer<key_type, value_type, knobs, compare>) + (num * sizeof(key_type *)));
+        pivot_pointers = (uint *)(disk_store.block_buf + sizeof(uint) + sizeof(bool) + sizeof(bool) + sizeof(uint) + sizeof(int) + sizeof(struct Buffer<key_type, value_type, knobs, compare>) + (num * sizeof(key_type)));
+
+        assert(*is_leaf == true || *is_leaf == false);
+        assert(*is_root == true || *is_root == false);
+        assert(*pivots_ctr >= 0);
+        assert(*parent >= 0);
+        assert(*next_node >= 0);
+
+#ifdef BPLUS
+        if (!*is_leaf)
+        {
+            assert(buffer->size >= 0 && buffer->size <= 1);
+        }
+
+#endif
+
+        // std::cout << sizeof(buffer) << std::endl;
+        // std::cout << "child " << sizeof(child_key_values) << std::endl;
+        // std::cout << sizeof(pivot_pointers) << std::endl;
+        // std::cout << knobs::S << std::endl;
+        // int num_pivs = knobs::NUM_PIVOTS;
+        // int size1 = sizeof(parent) + sizeof(is_leaf) + sizeof(is_root) + sizeof(next_node) + sizeof(pivots_ctr) + sizeof(struct Buffer<key_type, value_type, knobs, compare>) + (num * sizeof(child_key_values)) + (num_pivs * sizeof(pivot_pointers));
+        // int size2 = sizeof(is_leaf) + sizeof(is_root) + sizeof(parent) + sizeof(next_node) + sizeof(pivots_ctr) + sizeof(struct Data<key_type, value_type, knobs, compare>);
+
+        // int size3 = sizeof(uint) + sizeof(bool) + sizeof(bool) + sizeof(uint) + sizeof(int) + sizeof(struct Buffer<key_type, value_type, knobs, compare>) + (num * sizeof(key_type)) + (num_pivs * sizeof(uint));
+        // int size4 = sizeof(bool) + sizeof(bool) + sizeof(uint) + sizeof(uint) + sizeof(int) + sizeof(struct Data<key_type, value_type, knobs, compare>);
+
+        // int size_buffer = sizeof(struct Buffer<key_type, value_type, knobs, compare>);
+        // std::cout << sizeof(buffer->size) << std::endl;
+        // std::cout << sizeof(buffer->buffer) << std::endl;
+        // std::cout << knobs::NUM_UPSERTS << std::endl;
+        // std::cout << size1 << std::endl;
+        // std::cout << size2 << std::endl;
 #ifdef PROFILE
         auto stop = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
@@ -1732,7 +1886,7 @@ public:
     _Key max_key;
 
 public:
-    BeTree(std::string _name, std::string _rootDir, int _size_of_each_block, uint _blocks_in_memory) : tail_leaf(nullptr), head_leaf(nullptr)
+    BeTree(std::string _name, std::string _rootDir, unsigned long long _size_of_each_block, uint _blocks_in_memory) : tail_leaf(nullptr), head_leaf(nullptr)
     {
         manager = new BlockManager(_name, _rootDir, _size_of_each_block, _blocks_in_memory);
 
@@ -1788,7 +1942,7 @@ public:
 
     key_type getMaximumKey()
     {
-        return max_key; 
+        return max_key;
     }
 
 public:
@@ -1816,9 +1970,11 @@ public:
             {
                 tail_leaf = root;
                 head_leaf = root;
+                tail_leaf_id = root->getId();
+                head_leaf_id = root->getId();
             }
 
-            if(root->getDataSize()==1)
+            if (root->getDataSize() == 1)
             {
                 min_key = key;
                 max_key = key;
@@ -1862,7 +2018,7 @@ public:
                 // change old root
                 root->setRoot(false);
 
-                //set parents
+                // set parents
                 new_leaf.setParent(new_root->getId());
                 root->setParent(new_root->getId());
 
@@ -1975,7 +2131,7 @@ public:
 
                         root = new_root;
 
-                        //counting one I/O for writing old root back to disk as it was modified done later
+                        // counting one I/O for writing old root back to disk as it was modified done later
 
                         break;
                     }
@@ -2090,11 +2246,24 @@ public:
         return true;
     }
 
-    bool rangeQuery(key_type low, key_type high)
-    {
-        std::vector<std::pair<key_type, value_type>> elements = root->rangeQuery(low, high, traits);
+    // bool rangeQuery(key_type low, key_type high)
+    // {
+    //     std::vector<std::pair<key_type, value_type>> elements = root->rangeQuery(low, high, traits);
 
-        return true;
+    //     return true;
+    // }
+    std::vector<std::pair<key_type, value_type>> rangeQuery(key_type low, key_type high)
+    {
+#ifdef TIMER
+        auto start = std::chrono::high_resolution_clock::now();
+#endif
+        std::vector<std::pair<key_type, value_type>> elements = root->rangeQuery(low, high, traits);
+#ifdef TIMER
+        auto stop = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+        timer.range_query_time += duration.count();
+#endif
+        return elements;
     }
 
 public:
@@ -2279,7 +2448,7 @@ public:
         Iterator it = ibegin;
         for (size_t s = 0; s < num_items + 1; ++s, ++it)
         {
-            leaf->insertInLeaf(*it);    
+            leaf->insertInLeaf(*it);
         }
 
         // now add to tree
@@ -2295,16 +2464,16 @@ public:
             tail_leaf = leaf;
             tail_leaf_id = leaf->getId();
 
-            min_key = ibegin->first; 
-            max_key = iend->first; 
+            min_key = ibegin->first;
+            max_key = iend->first;
         }
 
         else
         {
-            // if tree is not empty, we are only going to add rightwards 
+            // if tree is not empty, we are only going to add rightwards
             // so we only need to update max key
-            max_key = iend->first; 
-            
+            max_key = iend->first;
+
             // case 2: tail leaf is not null, but root and tail leaf are the same, i.e. root is a leaf
             // this means that there is only one node in tree
             if (root->isLeaf())
@@ -2512,6 +2681,62 @@ public:
     int depth()
     {
         return root->depth();
+    }
+
+    void get_leaves_occupancy()
+    {
+        int min = 0, max = 0;
+        int tot = 0;
+        int num = 0;
+
+        int limit_80 = knobs::NUM_DATA_PAIRS * 0.8; 
+        int limit_50 = knobs::NUM_DATA_PAIRS * 0.5; 
+        int limit_20 = knobs::NUM_DATA_PAIRS * 0.2;
+
+        // start with heaf leaf
+        uint next_leaf_id = head_leaf_id;
+        BeNode<key_type, value_type, knobs, compare> *leaf = new BeNode<key_type, value_type, knobs, compare>(manager, head_leaf_id);
+        bool head = true;
+        while (next_leaf_id != tail_leaf_id && next_leaf_id != 0)
+        {
+            int occ = leaf->get_leaf_occupancy();
+            tot += occ;
+            num++;
+
+            if (head)
+            {
+                min = occ;
+                max = occ;
+                head = false;
+            }
+            else
+            {
+                if (occ < min)
+                    min = occ;
+                if (occ > max)
+                    max = occ;
+            }
+
+            // stats collection
+            if(occ >= limit_80)
+                traits.num_gr_80++;
+            else if(occ >= limit_50 && occ < limit_80)
+                traits.num_50_80++;
+            else if(occ >= limit_20 && occ < limit_50)
+                traits.num_20_50++;
+            else if(occ < limit_20)
+                traits.num_le_20++;
+
+            next_leaf_id = *leaf->getNextNode();
+            leaf->setToId(next_leaf_id);
+        }
+
+        traits.min_leaf_occupancy = min;
+        traits.max_leaf_occupancy = max;
+        traits.avg_leaf_occupancy = tot/num;
+        std::cout<<"num = "<<num<<std::endl;
+
+        delete leaf;
     }
 
     unsigned long long getLeafCacheMisses() { return manager->getLeafCacheMisses(); }

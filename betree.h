@@ -114,14 +114,13 @@ struct BeTraits
     int median_buffer_occupancy = 0;
 
     int min_leaf_occupancy = 0;
-    int max_leaf_occupancy = 0; 
+    int max_leaf_occupancy = 0;
     int avg_leaf_occupancy = 0;
 
     int num_gr_80 = 0;
     int num_50_80 = 0;
     int num_20_50 = 0;
     int num_le_20 = 0;
-
 };
 
 #ifdef TIMER
@@ -206,7 +205,6 @@ class BeNode : public Serializable
     bool *is_root;
 
     // parent of node (node id)
-    // BeNode<key_type, value_type, knobs, compare> *parent;
     uint *parent;
 
     // counter for no. of pivots
@@ -215,24 +213,16 @@ class BeNode : public Serializable
     // node's buffer
     struct Buffer<key_type, value_type, knobs, compare> *buffer;
 
-    // // node's child pointer keys
-    // key_type child_key_values[knobs::NUM_PIVOTS];
-
-    // // node's pivots/children
-    // BeNode<key_type, value_type, knobs, compare> *pivot_pointers[knobs::NUM_PIVOTS + 1];
     // node's child pointer keys
     key_type *child_key_values;
 
     // node's pivots/children
-    // BeNode<key_type, value_type, knobs, compare> **pivot_pointers;
-    // pivot_pointers will now be node id's rather than actual nodes
     uint *pivot_pointers;
 
     // data pairs for the node if leaf
     Data<key_type, value_type, knobs, compare> *data;
 
     // next node pointer (node id)
-    // BeNode<key_type, value_type, knobs, compare> *next_node;
     uint *next_node;
 
     BlockManager *manager;
@@ -247,22 +237,19 @@ public:
         if (miss)
         {
             if (*is_leaf)
-                // manager->setLeafCacheMisses(manager->getLeafCacheMisses() + 1);
                 manager->addLeafCacheMisses();
             else
-                // manager->setInternalCacheMisses(manager->getInternalCacheMisses() + 1);
                 manager->addInternalCacheMisses();
         }
         else
         {
             if (*is_leaf)
-                // manager->setLeafCacheHits(manager->getLeafCacheHits() + 1);
+
                 manager->addLeafCacheHits();
             else
-                // manager->setInternalCacheHits(manager->getInternalCacheHits() + 1);
+
                 manager->addInternalCacheHits();
         }
-
     }
 
     void setToId(uint _id)
@@ -384,7 +371,6 @@ public:
     {
         // make sure that the caller is an internal node
         open();
-        // assert(!isLeaf());
         assert(!*is_leaf);
 
         // we have k pointers and k+1 pivots
@@ -394,62 +380,6 @@ public:
 
         uint pos;
         bool flag = false;
-
-        // for (int i = 0; i < getPivotsCtr() - 1; i++)
-        // {
-        //     if (key <= child_key_values[i])
-        //     {
-        //         // return i;
-        //         pos = i;
-        //         flag = true;
-        //         break;
-        //     }
-        // }
-        // if (!flag)
-        //     pos = getPivotsCtr() - 1;
-
-        // int i = 0;
-        // while(i < getPivotsCtr()-1 && child_key_values[i]<key){
-        //     ++i;
-        // }
-
-        // assert(pos==i);
-
-        // if (getPivotsCtr() < 4)
-        // {
-        //     for (int i = 0; i < getPivotsCtr() - 1; i++)
-        //     {
-        //         if (key <= child_key_values[i])
-        //         {
-        //             return i;
-        //         }
-        //     }
-        //     return getPivotsCtr() - 1;
-        // }
-        // else
-        // {
-        //     uint lo = 0, hi = getPivotsCtr() - 1;
-
-        //     while (lo < hi)
-        //     {
-        //         int mid = (lo + hi) >> 1;
-
-        //         if (key <= child_key_values[mid])
-        //         {
-        //             hi = mid; // key <= mid
-        //         }
-        //         else
-        //         {
-        //             lo = mid + 1; // key > mid
-        //         }
-        //     }
-
-        //     // assert(pos == lo);
-        //     // // return getPivotsCtr() - 1;
-        //     // return pos;
-
-        //     return lo;
-        // }
         uint lo = 0, hi = getPivotsCtr() - 1;
 
         while (lo < hi)
@@ -466,10 +396,6 @@ public:
             }
         }
 
-        // assert(pos == lo);
-        // // return getPivotsCtr() - 1;
-        // return pos;
-
         return lo;
     }
 
@@ -483,7 +409,7 @@ public:
     {
         // make sure that caller node is a leaf
         open();
-        // assert(isLeaf());
+
         assert(*is_leaf);
 
         // set node as dirty
@@ -531,7 +457,6 @@ public:
     bool insertInLeaf(std::pair<key_type, value_type> element)
     {
         open();
-        // assert(isLeaf());
         assert(*is_leaf);
         // set node as dirty
         manager->addDirtyNode(id);
@@ -555,14 +480,12 @@ public:
 
         // make sure that caller is a leaf node
         open();
-        // assert(isLeaf());
         assert(*is_leaf);
         // set node as dirty
         manager->addDirtyNode(id);
 
         new_id = manager->allocate();
         // create new node
-        // BeNode<key_type, value_type, knobs, compare> new_sibling(manager, new_id, *parent, true, false, *next_node);
         BeNode<key_type, value_type, knobs, compare> new_sibling(manager, new_id);
         new_sibling.setParent(*parent);
         new_sibling.setLeaf(true);
@@ -570,10 +493,6 @@ public:
         new_sibling.setNextNode(*next_node);
 
         manager->addDirtyNode(new_id);
-
-        // sort the data in the current node
-        // std::sort(std::begin(data->data), std::end(data->data), compare_pair);
-        // std::sort(data->data, data->data + (sizeof(data->data) * data->size));
 
         traits.num_blocks++;
 
@@ -586,7 +505,6 @@ public:
 #endif
         for (int i = start_index; i < data->size; i++)
         {
-            // new_sibling->data->data[new_sibling->data->size++] = data->data[i];
             new_sibling.data->data[new_sibling.data->size++] = data->data[i];
         }
 
@@ -608,7 +526,6 @@ public:
         new_sibling.setParent(*parent);
 
         // split_key becomes lower bound of newly added sibling's keys
-        // split_key = new_sibling->data->data[0].first;
         split_key = data->data[data->size - 1].first;
 
         return new_id;
@@ -624,7 +541,6 @@ public:
 
         open();
         // make sure that caller is not a leaf node
-        // assert(!isLeaf());
         assert(!*is_leaf);
 
         manager->addDirtyNode(id);
@@ -663,18 +579,15 @@ public:
             }
             // move all pointers
             new_node.pivot_pointers[i - start_index] = pivot_pointers[i];
-            // new_node.pivots_ctr++;
             new_node.setPivotCounter(new_node.getPivotsCtr() + 1);
 
             // change the parent node for the pivots
-            // new_node->pivot_pointers[i - start_index]->parent = new_node;
             temp_mover.setToId(pivot_pointers[i]);
             *temp_mover.parent = new_node.getId();
             manager->addDirtyNode(temp_mover.getId());
         }
 
         // reset pivots counter for old node
-        // *pivots_ctr -= new_node.getPivotsCtr();
         setPivotCounter(getPivotsCtr() - new_node.getPivotsCtr());
 
         // split key is the first pointer of new node's children
@@ -719,16 +632,10 @@ public:
 #ifdef BPLUS
         assert(buffer->size == 0);
 #endif
-        // delete[] temp->buffer;
+
         delete temp;
 
         manager->addDirtyNode(id);
-
-        // delete[] buffer;
-        // // at this point, all elements have been distributed between the new node and the temp buffer
-        // // temp buffer will contain elements that should be retained by the old node
-        // // so replace the old node's buffer with temp
-        // buffer = temp;
 
         *next_node = new_id;
 
@@ -742,7 +649,6 @@ public:
     {
 
         open();
-        // assert(!isLeaf());
         assert(!*is_leaf);
 
         if (isRoot())
@@ -771,16 +677,8 @@ public:
             }
         }
 
-        // find child that can accept maximum messages
-        // for (int i = 0; i < getPivotsCtr(); i++)
-        // {
-        //     if (num_elements[i] > num_elements[chosen_child])
-        //         chosen_child = i;
-        // }
-
         chosen_child = max_slot;
 
-        // BeNode<key_type, value_type, knobs, compare> *child = pivot_pointers[chosen_child];
         BeNode<key_type, value_type, knobs, compare> child(manager, pivot_pointers[chosen_child]);
 
         int available_spots = knobs::NUM_UPSERTS - child.getBufferSize();
@@ -821,7 +719,6 @@ public:
         std::pair<key_type, value_type> empty_pair = temp->buffer[0];
         for (int i = 0; i < buffer->size; i++)
         {
-            // if (slotOfKey(buffer->buffer[i].first) == chosen_child)
             if (buffer_spots[i] == chosen_child)
             {
                 // check if we are exceeding threshold
@@ -841,18 +738,6 @@ public:
             temp->size++;
         }
 
-        // copy temp to buffer
-        // for (int i = 0; i < buffer->size; i++)
-        // {
-        //     if (i < temp->size)
-        //     {
-        //         buffer->buffer[i] = temp->buffer[i];
-        //     }
-        //     else
-        //     {
-        //         buffer->buffer[i] = empty_pair;
-        //     }
-        // }
         memcpy(buffer->buffer, temp->buffer, temp->size * sizeof(buffer->buffer[0]));
 
         buffer->size = temp->size;
@@ -862,9 +747,7 @@ public:
 
         manager->addDirtyNode(id);
 
-        // delete[] temp->buffer;
         delete temp;
-
     }
 
     /**
@@ -876,7 +759,6 @@ public:
     {
         // make sure caller is not a leaf node
         open();
-        // assert(!isLeaf());
         assert(!*is_leaf);
 
         // set node as dirty
@@ -897,13 +779,10 @@ public:
 
             assert(data->size <= knobs::NUM_DATA_PAIRS);
 
-            // delete[] elements_to_flush;
             return true;
         }
 
         assert(child.getDataSize() == init_data_size + num_to_flush);
-        // update trait characteristic
-        // traits::leaf_flushes++;
 
         // we have inserted and do not require a split so return false
         return false;
@@ -919,7 +798,7 @@ public:
 
         // make sure caller is not a leaf node
         open();
-        // assert(!isLeaf());
+
         assert(!*is_leaf);
 
         child.open();
@@ -959,11 +838,8 @@ public:
 #ifdef BPLUS
         assert(num_to_flush == 1);
 #endif
-        // memcpy(child.buffer->buffer + child.buffer->size, elements_to_flush, num_to_flush * sizeof(std::pair<key_type, value_type>));
         child.buffer->size += num_to_flush;
 
-
-        // delete[] elements_to_flush;
         // return true or false based on whether we exceeded capacity
         // if returning true, the caller for this function will have to
         // perform a subsequent flush operation at least for one more level
@@ -1014,7 +890,6 @@ public:
 
             traits.leaf_flushes++;
 
-
             delete[] elements_to_flush;
             return flag;
         }
@@ -1033,7 +908,6 @@ public:
             // we initiated a flushLevel for the child. When this returns, child's buffer should be empty
             assert(child.getBufferSize() == 0);
 #endif
-
         }
 
         // if flushInternal was a success and buffer didn't exceed capacity
@@ -1051,7 +925,6 @@ public:
     {
 
         open();
-        // assert(!isLeaf());
         assert(!*is_leaf);
 
         // set node as dirty
@@ -1067,7 +940,7 @@ public:
 
         child_key_values[node_position] = split_key;
         pivot_pointers[node_position + 1] = new_node_id;
-        // *pivots_ctr++;
+
         setPivotCounter(getPivotsCtr() + 1);
 
         return getPivotsCtr() == knobs::NUM_PIVOTS;
@@ -1097,29 +970,19 @@ public:
         if (*is_leaf)
         {
             // perform binary search
-
-            // std::sort(data->data, data->data + sizeof(data->data));
             bool found = std::binary_search(data->data, data->data + data->size, key, compare_pair_kv<key_type, value_type>());
 
             return found;
         }
 
-        // if current node is not a leaf, first check the buffer
-
-        // binary search on buffer
-        // std::sort(buffer->buffer, buffer->buffer + sizeof(buffer->buffer));
-
         bool found = std::binary_search(buffer->buffer, buffer->buffer + buffer->size, key, compare_pair_kv<key_type, value_type>());
-
 
         if (found)
             return true;
 
-
         // if not found in buffer, we need to search its pivots
         int chosen_child_idx = slotOfKey(key);
         BeNode<key_type, value_type, knobs, compare> child(manager, pivot_pointers[chosen_child_idx]);
-
 
         return child.query(key, traits);
     }
@@ -1209,8 +1072,6 @@ public:
         BeNode<key_type, value_type, knobs, compare> start_node(manager, id);
         std::vector<std::vector<std::pair<key_type, value_type>>> elements;
 
-
-
         while (true)
         {
             start_node.open();
@@ -1247,12 +1108,11 @@ public:
                     current_node.open();
                     // insert elements at end of row by fetching elements. flag will determine if we are
                     // reaching the upper limit
-                    // row.insert(row.end(), current_node->getElementsInRangeInLeaf(low, high, flag));
 
                     if (current_node.getDataSize() > 0)
                     {
                         std::vector<std::pair<key_type, value_type>> fetched = current_node.getElementsInRangeInLeaf(low, high, flag);
-                        // std::cout<<"Fetched Size = "<<fetched.size()<<std::endl;
+
                         for (int i = 0; i < fetched.size(); i++)
                         {
                             row.push_back(fetched[i]);
@@ -1263,15 +1123,11 @@ public:
 
                     if (current_node.getId() == 0)
                         break;
-
                 }
 
                 if (row.size() > 0)
                     elements.push_back(row);
 
-                // we probably don't need this as we are no longer using pointers
-                // current_node = NULL;
-                // delete current_node;
                 break;
             }
 
@@ -1287,23 +1143,21 @@ public:
                     current_node.open();
                     // insert elements at end of row by fetching elements. flag will determine if we are
                     // reaching the upper limit
-                    // row.insert(row.end(), current_node->getElementsInRangeInBuffer(low, high, flag));
 
                     if (current_node.getBufferSize() > 0)
                     {
                         std::vector<std::pair<key_type, value_type>> fetched = current_node.getElementsInRangeInBuffer(low, high, flag);
-                        // std::cout << "Fetched Size = " << fetched.size() << std::endl;
+
                         for (int i = 0; i < fetched.size(); i++)
                         {
                             row.push_back(fetched[i]);
                         }
                     }
-                    // std::cout<<"Goint to next node = "<<current_node.getNextNode().getId()<<std::endl;
+
                     current_node.setToId(*current_node.getNextNode());
 
                     if (current_node.getId() == 0)
                         break;
-
                 }
 
                 if (row.size() > 0)
@@ -1312,11 +1166,6 @@ public:
                 // find next level's first child from current start node that can take in the lower key
                 start_node.open();
                 start_node.setToId(start_node.pivot_pointers[start_node.slotOfKey(low)]);
-
-
-                // we probably don't need this since we are no longer using pointers
-                // current_node = NULL;
-                // delete current_node;
             }
         }
 
@@ -1333,7 +1182,6 @@ public:
         }
         for (int i = 0; i < elements.size(); i++)
         {
-            // std::vector<std::pair<key_type, value_type> > row = elements[i];
 
             for (int j = 0; j < elements[i].size(); j++)
             {
@@ -1384,7 +1232,6 @@ public:
     std::pair<key_type, value_type> getLastDataPair()
     {
         open();
-        // assert(isLeaf());
         assert(*is_leaf);
 
         return data->data[data->size - 1];
@@ -1562,7 +1409,6 @@ public:
         return 0;
     }
 
-   
     void Deserialize(const Block &disk_store)
     {
 
@@ -1576,7 +1422,6 @@ public:
         data = (struct Data<key_type, value_type, knobs, compare> *)(disk_store.block_buf + sizeof(bool) + sizeof(bool) + sizeof(uint) + sizeof(uint) + sizeof(int));
         buffer = (struct Buffer<key_type, value_type, knobs, compare> *)(disk_store.block_buf + sizeof(bool) + sizeof(bool) + sizeof(uint) + sizeof(uint) + sizeof(int));
 
-        // child_key_values = (key_type *)(disk_store.block_buf + sizeof(parent) + sizeof(is_leaf) + sizeof(is_root) + sizeof(next_node) + sizeof(pivots_ctr) + sizeof(struct Buffer<key_type, value_type, knobs, compare>*));
         child_key_values = (key_type *)(disk_store.block_buf + sizeof(uint) + sizeof(bool) + sizeof(bool) + sizeof(uint) + sizeof(int) + sizeof(struct Buffer<key_type, value_type, knobs, compare>));
 
         int num = knobs::NUM_CHILDREN;
@@ -1596,7 +1441,6 @@ public:
         }
 
 #endif
-
     }
 };
 
@@ -1645,9 +1489,6 @@ public:
         root->setRoot(true);
         root->setLeaf(true);
 
-        // head_leaf = root;
-        // tail_leaf = root;
-
         head_leaf_id = root_id;
         tail_leaf_id = root_id;
 
@@ -1672,11 +1513,9 @@ public:
 
     ~BeTree()
     {
-        // root->~BeNode();
+
         delete root;
         delete manager;
-        // delete tail_leaf;
-        // delete head_leaf;
     }
 
 public:
@@ -1701,7 +1540,6 @@ public:
 #ifdef TIMER
         auto start = std::chrono::high_resolution_clock::now();
 #endif
-
 
         // if root is a leaf node, we insert in leaf until it exceeds capacity
         root->open();
@@ -1736,8 +1574,6 @@ public:
                 BeNode<key_type, value_type, knobs, compare> new_leaf(manager, new_id);
                 traits.leaf_splits++;
 
-
-
                 key_type old_root_key = root->getLastDataPair().first;
 
                 // create new root node
@@ -1745,10 +1581,6 @@ public:
                 BeNode<key_type, value_type, knobs, compare> *new_root = new BeNode<key_type, value_type, knobs, compare>(manager, new_root_id);
                 new_root->setRoot(true);
 
-
-
-                // new_root->addPivot(old_root_key, root);
-                // new_root->addPivot(split_key_new, new_leaf);
                 new_root->setChildKey(split_key_new, 0);
                 new_root->setPivot(root->getId(), 0);
                 new_root->setPivot(new_leaf.getId(), 1);
@@ -1775,7 +1607,6 @@ public:
                 root = new_root;
             }
 
-
 #ifdef TIMER
             auto stop = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
@@ -1790,9 +1621,6 @@ public:
 
             key_type split_key;
             uint new_node_id = 0;
-
-            // BeNode<key_type, value_type, knobs, compare> *leftovers[traits.num_blocks];
-            // int left = 0;
 
             Result result = root->flushLevel(split_key, new_node_id, traits);
 
@@ -1832,8 +1660,6 @@ public:
                         manager->addDirtyNode(new_node_id);
                         traits.internal_splits++;
 
-
-
                         // create new root
                         uint new_root_id = manager->allocate();
                         BeNode<key_type, value_type, knobs, compare> *new_root = new BeNode<key_type, value_type, knobs, compare>(manager, new_root_id);
@@ -1854,8 +1680,6 @@ public:
 
                         root = new_root;
 
-                        // counting one I/O for writing old root back to disk as it was modified done later
-
                         break;
                     }
 
@@ -1867,10 +1691,6 @@ public:
                     manager->addDirtyNode(child_parent.getId());
                     new_node.setToId(new_node_id);
                     manager->addDirtyNode(new_node_id);
-
-
-                    // we set the parent now to child_parent's parent
-                    // child_parent = new_node->getParent();
                 }
 
                 else
@@ -1885,8 +1705,6 @@ public:
             min_key = key;
         else if (key > max_key)
             max_key = key;
-
-
 
 #ifdef TIMER
         auto stop = std::chrono::high_resolution_clock::now();
@@ -1904,9 +1722,7 @@ public:
             auto start = std::chrono::high_resolution_clock::now();
 #endif
 
-
             bool flag = root->query(key, traits);
-
 
 #ifdef TIMER
             auto stop = std::chrono::high_resolution_clock::now();
@@ -1920,7 +1736,6 @@ public:
         auto start = std::chrono::high_resolution_clock::now();
 #endif
 
-
         std::vector<std::pair<key_type, value_type>> elements = root->rangeQuery(key, high, traits);
 
 #ifdef TIMER
@@ -1931,12 +1746,6 @@ public:
         return true;
     }
 
-    // bool rangeQuery(key_type low, key_type high)
-    // {
-    //     std::vector<std::pair<key_type, value_type>> elements = root->rangeQuery(low, high, traits);
-
-    //     return true;
-    // }
     std::vector<std::pair<key_type, value_type>> rangeQuery(key_type low, key_type high)
     {
 #ifdef TIMER
@@ -1985,12 +1794,10 @@ public:
             }
             else
             {
-                // head_leaf = new BeNode<key_type, value_type, knobs, compare>(manager, leaf.getId());
                 head_leaf = leaf;
             }
 
             tail_leaf = leaf;
-            // tail_leaf = new BeNode<key_type, value_type, knobs, compare>(manager, leaf.getId());
 
             num_items -= slots_to_use;
         }
@@ -2010,8 +1817,6 @@ public:
         size_t num_parents = (num_leaves + (knobs::NUM_PIVOTS + 1) - 1) / (knobs::NUM_PIVOTS + 1);
 
         // save internal nodes and maxkey for next level
-        // typedef std::pair<BeNode<key_type, value_type, knobs, compare> *, const key_type *> nextlevel_type;
-        // typedef std::pair<int, const key_type *> nextlevel_type;
         typedef std::pair<uint, const key_type *> nextlevel_type;
         nextlevel_type *next_level = new nextlevel_type[num_parents];
 
@@ -2024,7 +1829,6 @@ public:
             leaf->open();
             // create internal node
             uint n_id = manager->allocate();
-            // BeNode<key_type, value_type, knobs, compare> *n = new BeNode<key_type, value_type, knobs, compare>();
             BeNode<key_type, value_type, knobs, compare> *n = new BeNode<key_type, value_type, knobs, compare>(manager, n_id);
 
             int slots_to_use = static_cast<int>((num_leaves - 1) / (num_parents - i));
@@ -2038,9 +1842,7 @@ public:
                 leaf->open();
                 n->open();
                 n->setChildKey(leaf->getDataPairKey(leaf->getDataSize() - 1), s);
-                // n->setChildKey(leaf->getNextNode()->getDataPairKey(0), s);
                 n->setPivot(leaf->getId(), s);
-                // leaf = leaf->getNextNode();
                 leaf->setToId(*leaf->getNextNode());
             }
 
@@ -2051,15 +1853,9 @@ public:
 
             // track max key of any descendant
             next_level[i].first = n->getId();
-            // next_level[i].second = leaf->getDataPairKeyReference(leaf->getDataSize() - 1);
-            // next_level[i].second = leaf->getDataPairKey(leaf->getDataSize() - 1);
             level_keys[i] = *leaf->getDataPairKeyReference(leaf->getDataSize() - 1);
             next_level[i].second = &level_keys[i];
 
-            // next_level[i].second = leaf->getNextNode()->getDataPairKeyReference(0);
-            // next_level[i].second = &leaf->child_key_values[leaf->getPivotsCtr() - 1];
-
-            // leaf = leaf->getNextNode();
             leaf->setToId(*leaf->getNextNode());
             num_leaves -= n->getPivotsCtr();
         }
@@ -2120,9 +1916,7 @@ public:
     template <typename Iterator>
     bool bulkload_leaf(Iterator ibegin, Iterator iend)
     {
-        // #ifdef TIMER
-        //         auto start = std::chrono::high_resolution_clock::now();
-        // #endif
+
         // first create leaf node
         uint new_leaf_id = manager->allocate();
         BeNode<key_type, value_type, knobs, compare> *leaf = new BeNode<key_type, value_type, knobs, compare>(manager, new_leaf_id);
@@ -2163,7 +1957,6 @@ public:
             // this means that there is only one node in tree
             if (root->isLeaf())
             {
-                // key_type split_key = root->getLastDataPair().first;
                 key_type split_key_new = root->getDataPairKey(root->getDataSize() - 1);
 
                 // create new root
@@ -2199,7 +1992,6 @@ public:
                 // case 3: tree exists and we just need to add the leaf
                 // here we can have two possibilities: add and done, or we need to split internal nodes/root
 
-                // key_type split_key = tail_leaf->getLastDataPair().first;
                 key_type split_key = tail_leaf->getDataPairKey(tail_leaf->getDataSize() - 1);
                 uint new_node_id = leaf->getId();
                 leaf->setParent(tail_leaf->getParent());
@@ -2212,7 +2004,6 @@ public:
                 tail_leaf = leaf;
                 tail_leaf_id = leaf->getId();
 
-                // BeNode<key_type, value_type, knobs, compare> *new_node = new BeNode<key_type, value_type, knobs, compare> (manager, leaf->getId());
                 BeNode<key_type, value_type, knobs, compare> new_node(manager, leaf->getId());
                 while (true)
                 {
@@ -2261,17 +2052,9 @@ public:
                     manager->addDirtyNode(child_parent.getId());
                     new_node.setToId(new_node_id);
                     manager->addDirtyNode(new_node_id);
-
-
                 }
             }
         }
-
-        // #ifdef TIMER
-        //         auto stop = std::chrono::high_resolution_clock::now();
-        //         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-        //         timer.bulk_load_time += duration.count();
-        // #endif
 
         return true;
     }
@@ -2283,7 +2066,6 @@ public:
         auto start = std::chrono::high_resolution_clock::now();
 #endif
         size_t num_items = iend - ibegin + 1;
-        // size_t num_leaves = (num_items + knobs::NUM_DATA_PAIRS - 1) / knobs::NUM_DATA_PAIRS;
         size_t num_leaves = (num_items) / (knobs::NUM_DATA_PAIRS - 1 - 1);
         int slots_to_use = static_cast<int>(num_items / num_leaves);
 
@@ -2372,8 +2154,8 @@ public:
         int tot = 0;
         int num = 0;
 
-        int limit_80 = knobs::NUM_DATA_PAIRS * 0.8; 
-        int limit_50 = knobs::NUM_DATA_PAIRS * 0.5; 
+        int limit_80 = knobs::NUM_DATA_PAIRS * 0.8;
+        int limit_50 = knobs::NUM_DATA_PAIRS * 0.5;
         int limit_20 = knobs::NUM_DATA_PAIRS * 0.2;
 
         // start with heaf leaf
@@ -2401,13 +2183,13 @@ public:
             }
 
             // stats collection
-            if(occ >= limit_80)
+            if (occ >= limit_80)
                 traits.num_gr_80++;
-            else if(occ >= limit_50 && occ < limit_80)
+            else if (occ >= limit_50 && occ < limit_80)
                 traits.num_50_80++;
-            else if(occ >= limit_20 && occ < limit_50)
+            else if (occ >= limit_20 && occ < limit_50)
                 traits.num_20_50++;
-            else if(occ < limit_20)
+            else if (occ < limit_20)
                 traits.num_le_20++;
 
             next_leaf_id = *leaf->getNextNode();
@@ -2416,8 +2198,8 @@ public:
 
         traits.min_leaf_occupancy = min;
         traits.max_leaf_occupancy = max;
-        traits.avg_leaf_occupancy = tot/num;
-        std::cout<<"num = "<<num<<std::endl;
+        traits.avg_leaf_occupancy = tot / num;
+        std::cout << "num = " << num << std::endl;
 
         delete leaf;
     }
@@ -2439,7 +2221,6 @@ public:
     uint getNumBlocks() { return manager->current_blocks; }
 
     uint getBlocksInMemoryCap() { return manager->blocks_in_memory_cap; }
-
 };
 
 #endif

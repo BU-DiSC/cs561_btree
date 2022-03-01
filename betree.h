@@ -122,20 +122,6 @@ struct BeTraits
     int num_20_50 = 0;
     int num_le_20 = 0;
 
-#ifdef IO
-    unsigned long io_pointquery = 0;
-    unsigned long io_rangequery = 0;
-    unsigned long io_insert = 0;
-
-    unsigned long io_max_pointquery = 1;
-    unsigned long io_min_pointquery = 1;
-
-    unsigned long io_max_rangequery = 1;
-    unsigned long io_min_rangequery = 1;
-
-    unsigned long io_max_insert = 0;
-    unsigned long io_min_insert = 2;
-#endif
 };
 
 #ifdef TIMER
@@ -1012,11 +998,6 @@ public:
 
         Result res = NOSPLIT;
 
-// this child might essentially be read from disk so account one I/O for reading it
-#ifdef IO
-        traits.io_insert++;
-#endif
-
         if (child.isLeaf())
         {
 
@@ -1033,10 +1014,6 @@ public:
 
             traits.leaf_flushes++;
 
-// we are done modifying contents of child so writing back to disk takes 1 I/O
-#ifdef IO
-            traits.io_insert++;
-#endif
 
             delete[] elements_to_flush;
             return flag;
@@ -1056,10 +1033,7 @@ public:
             // we initiated a flushLevel for the child. When this returns, child's buffer should be empty
             assert(child.getBufferSize() == 0);
 #endif
-// we are done with the child here so need to write back to disk, account one i/o
-#ifdef IO
-            traits.io_insert++;
-#endif
+
         }
 
         // if flushInternal was a success and buffer didn't exceed capacity
@@ -1117,10 +1091,7 @@ public:
     bool query(key_type key, BeTraits &traits)
     {
         open();
-#ifdef IO
-        // since we are into a new node which would be read from the disk, count an IO
-        traits.io_pointquery++;
-#endif
+
         // if current node is a leaf
         // search all data pairs
         if (*is_leaf)
@@ -1238,10 +1209,7 @@ public:
         BeNode<key_type, value_type, knobs, compare> start_node(manager, id);
         std::vector<std::vector<std::pair<key_type, value_type>>> elements;
 
-// IO for reading start node
-#ifdef IO
-        traits.io_rangequery++;
-#endif
+
 
         while (true)
         {
@@ -1264,10 +1232,6 @@ public:
                 int slot = start_node.slotOfKey(low);
                 start_node.setToId(pivot_pointers[slot]);
 
-// reading next node from memory so increase I/O counter
-#ifdef IO
-                traits.io_rangequery++;
-#endif
                 continue;
             }
 
@@ -1300,10 +1264,6 @@ public:
                     if (current_node.getId() == 0)
                         break;
 
-                        // getting next node so increase I/O counter
-#ifdef IO
-                    traits.io_rangequery++;
-#endif
                 }
 
                 if (row.size() > 0)
@@ -1344,10 +1304,6 @@ public:
                     if (current_node.getId() == 0)
                         break;
 
-// reading next node from memory so increase I/O counter
-#ifdef IO
-                    traits.io_rangequery++;
-#endif
                 }
 
                 if (row.size() > 0)
@@ -1357,10 +1313,7 @@ public:
                 start_node.open();
                 start_node.setToId(start_node.pivot_pointers[start_node.slotOfKey(low)]);
 
-// reading next node from memory so increase I/O counter
-#ifdef IO
-                traits.io_rangequery++;
-#endif
+
                 // we probably don't need this since we are no longer using pointers
                 // current_node = NULL;
                 // delete current_node;
@@ -1749,10 +1702,7 @@ public:
         auto start = std::chrono::high_resolution_clock::now();
 #endif
 
-// append i/o count for reading root from disk into memory
-#ifdef IO
-        traits.io_insert++;
-#endif
+
         // if root is a leaf node, we insert in leaf until it exceeds capacity
         root->open();
         manager->addDirtyNode(root->getId());
@@ -1786,10 +1736,7 @@ public:
                 BeNode<key_type, value_type, knobs, compare> new_leaf(manager, new_id);
                 traits.leaf_splits++;
 
-// writing new_leaf to disk takes one I/O
-#ifdef IO
-                traits.io_insert++;
-#endif
+
 
                 key_type old_root_key = root->getLastDataPair().first;
 
@@ -1798,10 +1745,7 @@ public:
                 BeNode<key_type, value_type, knobs, compare> *new_root = new BeNode<key_type, value_type, knobs, compare>(manager, new_root_id);
                 new_root->setRoot(true);
 
-// writing new root to disk takes one I/O
-#ifdef IO
-                traits.io_insert++;
-#endif
+
 
                 // new_root->addPivot(old_root_key, root);
                 // new_root->addPivot(split_key_new, new_leaf);
@@ -1830,12 +1774,7 @@ public:
 
                 root = new_root;
             }
-// we have added something to the root, so we need to write it back. This takes one I/O
-// this case will also include if the root was split and a new root was created (here we append I/O counter for
-// modifying old root node)
-#ifdef IO
-            traits.io_insert++;
-#endif
+
 
 #ifdef TIMER
             auto stop = std::chrono::high_resolution_clock::now();
@@ -1893,10 +1832,7 @@ public:
                         manager->addDirtyNode(new_node_id);
                         traits.internal_splits++;
 
-                        // count one I/O for writing new_sibling
-#ifdef IO
-                        traits.io_insert++;
-#endif
+
 
                         // create new root
                         uint new_root_id = manager->allocate();
@@ -1904,10 +1840,6 @@ public:
                         new_root->setRoot(true);
                         manager->addDirtyNode(new_root_id);
 
-// count one I/O for writing new root to disk
-#ifdef IO
-                        traits.io_insert++;
-#endif
                         new_root->setChildKey(split_key, 0);
                         new_root->setPivot(child_parent.getId(), 0);
                         new_root->setPivot(new_sibling.getId(), 1);
@@ -1936,11 +1868,6 @@ public:
                     new_node.setToId(new_node_id);
                     manager->addDirtyNode(new_node_id);
 
-// since we are splitting, new_node will be a newly created node form split
-// this node needs to be written to disk which accounts for a single I/O
-#ifdef IO
-                    traits.io_insert++;
-#endif
 
                     // we set the parent now to child_parent's parent
                     // child_parent = new_node->getParent();
@@ -1959,11 +1886,7 @@ public:
         else if (key > max_key)
             max_key = key;
 
-// all inserts start from root and we have already accounted one I/O for reading from disk
-// we now need to write the root back to disk which takes one I/O
-#ifdef IO
-        traits.io_insert++;
-#endif
+
 
 #ifdef TIMER
         auto stop = std::chrono::high_resolution_clock::now();
@@ -1980,25 +1903,11 @@ public:
 #ifdef TIMER
             auto start = std::chrono::high_resolution_clock::now();
 #endif
-#ifdef IO
-            int init_ios = traits.io_pointquery;
-#endif
+
 
             bool flag = root->query(key, traits);
 
-#ifdef IO
-            int end_ios = traits.io_pointquery;
-            int ios_for_query = end_ios - init_ios;
-            assert(ios_for_query >= 1);
-            if (ios_for_query > traits.io_max_pointquery)
-            {
-                traits.io_max_pointquery = ios_for_query;
-            }
-            else if (ios_for_query < traits.io_min_pointquery)
-            {
-                traits.io_min_pointquery = ios_for_query;
-            }
-#endif
+
 #ifdef TIMER
             auto stop = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
@@ -2010,25 +1919,10 @@ public:
 #ifdef TIMER
         auto start = std::chrono::high_resolution_clock::now();
 #endif
-#ifdef IO
-        int init_range_ios = traits.io_rangequery;
-#endif
+
 
         std::vector<std::pair<key_type, value_type>> elements = root->rangeQuery(key, high, traits);
 
-#ifdef IO
-        int end_range_ios = traits.io_rangequery;
-        int ios_for_range_query = end_range_ios - init_range_ios;
-        assert(ios_for_range_query >= 1);
-        if (ios_for_range_query > traits.io_max_rangequery)
-        {
-            traits.io_max_rangequery = ios_for_range_query;
-        }
-        else if (ios_for_range_query < traits.io_min_rangequery)
-        {
-            traits.io_min_rangequery = ios_for_range_query;
-        }
-#endif
 #ifdef TIMER
         auto stop = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
@@ -2368,9 +2262,7 @@ public:
                     new_node.setToId(new_node_id);
                     manager->addDirtyNode(new_node_id);
 
-#ifdef IO
-                    traits.io_insert++;
-#endif
+
                 }
             }
         }
